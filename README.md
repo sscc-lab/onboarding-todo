@@ -20,6 +20,8 @@ localhost:5500  localhost:8000
 | `main.py` | API 서버. `/todos` API를 처리한다 — **조회만 완성, 나머지는 실습에서 구현** |
 | `requirements.txt` | 서버가 쓰는 Python 패키지 목록 (FastAPI · SQLAlchemy · PostgreSQL 드라이버) |
 | `todo.db` | 처음 실행하면 생기는 SQLite 파일. Git에 올리지 않는다(`.gitignore`) |
+| `grading/` | 평가표(`rubric.md`)와 채점 도구 — 실습을 마친 뒤 스스로 점검할 때도 쓴다 |
+| `.claude/skills/grade-todo-practice/` | Claude Code에서 «2회차 실습 채점해 줘»로 부르는 채점 Skill |
 
 > 일부러 `main.py` 한 파일에 설정 · DB 모델 · HTTP 처리 · 검증을 모두 넣었습니다.
 > 기능을 넣을수록 파일이 어떻게 복잡해지는지 느껴 보세요. 그 불편함이 3회차의 출발점입니다.
