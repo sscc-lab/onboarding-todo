@@ -1,6 +1,6 @@
 """TODO 서버 — 2회차 실습용.
 
-일부러 파일 하나에 모든 것을 넣었습니다(설정 · DB 모델 · HTTP 처리 · 검증).
+일부러 파일 하나에 모든 것을 넣었습니다(설정 · CORS · DB 모델 · HTTP 처리 · 검증).
 기능이 늘수록 이 파일이 얼마나 복잡해지는지 느껴 보는 것이 이번 주의 목적이고,
 그 불편함이 3회차(Layered Architecture)의 출발점입니다.
 """
@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import String, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
@@ -27,6 +27,21 @@ if DATABASE_URL.startswith(("postgresql://", "postgres://")):
 engine = create_engine(DATABASE_URL, echo=True)
 
 app = FastAPI(title="onboarding-todo")
+
+# ── CORS — 이 API를 불러도 되는 화면 주소 ─────────────────
+# 화면(index.html)과 API의 주소가 다르면, 브라우저는 API가 허락한 주소에서 온 요청만 받아들입니다.
+# 로컬에서는 화면을 http://localhost:5500 에서 띄우므로 그 주소를 기본으로 허락합니다.
+# 배포하면 환경변수 ALLOWED_ORIGINS에 Cloudflare Pages 주소를 넣습니다(쉼표로 여러 개).
+ALLOWED_ORIGINS = os.environ.get(
+    "ALLOWED_ORIGINS", "http://localhost:5500,http://127.0.0.1:5500"
+).split(",")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ── DB 모델 — 테이블 하나 = 클래스 하나 ─────────────────────
@@ -73,13 +88,13 @@ class TodoUpdate(BaseModel):
     completed: bool | None = None
 
 
-# ── 화면 ──────────────────────────────────────────────────
+# ── 상태 확인 ─────────────────────────────────────────────
 
 
 @app.get("/")
-def index():
-    # 로컬에서는 FastAPI가 화면(index.html)도 함께 내려줍니다.
-    return FileResponse(Path(__file__).parent / "index.html")
+def health():
+    # 서버가 살아 있는지 확인하는 용도입니다. 화면은 index.html을 따로 엽니다.
+    return {"status": "ok"}
 
 
 # ── API ───────────────────────────────────────────────────
