@@ -16,7 +16,7 @@ localhost:5500  localhost:8000
 
 | 파일 | 하는 일 |
 |---|---|
-| `index.html` | 화면. 버튼을 누르면 `fetch`로 `API_BASE`(기본 `http://localhost:8000`)의 API를 부른다 — **완성되어 있다** |
+| `index.html` | 화면. 버튼을 누르면 `fetch`로 `API_BASE`(기본 `http://localhost:8000`)의 API를 부른다 — **화면 그리기는 완성, API를 부르는 함수 네 개는 실습에서 구현** |
 | `main.py` | API 서버. `/todos` API를 처리한다 — **조회만 완성, 나머지는 실습에서 구현** |
 | `requirements.txt` | 서버가 쓰는 Python 패키지 목록 (FastAPI · SQLAlchemy · PostgreSQL 드라이버) |
 | `todo.db` | 처음 실행하면 생기는 SQLite 파일. Git에 올리지 않는다(`.gitignore`) |
@@ -90,7 +90,7 @@ pip install -r requirements.txt
 
    > VS Code의 **Live Server** 확장을 써도 됩니다. 기본 주소가 같은 `http://localhost:5500`입니다.
 
-5. 브라우저에서 **http://localhost:5500** 을 엽니다. 목록은 비어 있고, **등록 버튼을 누르면 `501` 오류**가 보이면 정상입니다 — 아직 구현하지 않았으니까요.
+5. 브라우저에서 **http://localhost:5500** 을 엽니다. 목록은 비어 있고, **등록 버튼을 누르면 `createTodo — index.html에서 아직 구현하지 않았습니다`** 가 보이면 정상입니다 — 화면 쪽 함수부터 아직 비어 있으니까요.
 6. **http://localhost:8000/docs** 를 열면 FastAPI가 만들어 준 API 문서에서 요청을 직접 보내 볼 수 있습니다.
 
 > 브라우저 **개발자 도구(F12) → Network 탭**을 켜 두세요. 버튼을 누를 때마다 어떤 Request가 나가고 어떤 Response가 오는지 보입니다.
@@ -106,14 +106,14 @@ pip install -r requirements.txt
 
 ## 1. 기초 실습 — 기능 네 개 완성하기
 
-기능마다 **Issue 하나 · Branch 하나 · PR 하나**로 진행합니다. `main.py`의 각 함수 주석에 할 일이 적혀 있습니다.
+기능마다 **Issue 하나 · Branch 하나 · PR 하나**로 진행합니다. 한 기능은 **서버(`main.py`)의 함수 하나 + 그 API를 부르는 화면(`index.html`)의 함수 하나**입니다. 각 함수 주석에 할 일이 적혀 있고, `index.html`의 `listTodos`가 완성된 예시입니다.
 
-| 순서 | Issue 제목 | Branch | 함수 |
-|---|---|---|---|
-| ① | TODO 등록 | `feat/#1-create` | `create_todo` |
-| ② | TODO 제목 수정 | `feat/#2-update-title` | `update_todo` (title) |
-| ③ | TODO 완료 · 미완료 변경 | `feat/#3-toggle` | `update_todo` (completed) |
-| ④ | TODO 삭제 | `feat/#4-delete` | `delete_todo` |
+| 순서 | Issue 제목 | Branch | `main.py` (API) | `index.html` (API 부르기) |
+|---|---|---|---|---|
+| ① | TODO 등록 | `feat/#1-create` | `create_todo` | `createTodo` |
+| ② | TODO 제목 수정 | `feat/#2-update-title` | `update_todo` (title) | `updateTitle` |
+| ③ | TODO 완료 · 미완료 변경 | `feat/#3-toggle` | `update_todo` (completed) | `setCompleted` |
+| ④ | TODO 삭제 | `feat/#4-delete` | `delete_todo` | `deleteTodo` |
 
 > 번호는 화면에서 받은 내 Issue 번호로 바꿔 쓰세요.
 
@@ -123,14 +123,14 @@ pip install -r requirements.txt
 git switch main && git pull
 git switch -c feat/#1-create
 
-# main.py의 create_todo를 구현하고, 브라우저에서 등록이 되는지 확인한다
-git add main.py
+# main.py의 create_todo와 index.html의 createTodo를 구현하고, 브라우저에서 등록이 되는지 확인한다
+git add main.py index.html
 git commit -m "#1 feat: TODO 등록 API 구현"
 git push -u origin feat/#1-create
 # → PR [#1] TODO 등록 (본문에 Closes #1) → Pair에게 Review → Squash and merge
 ```
 
-**구현 힌트**
+**구현 힌트 — 서버 (`main.py`)**
 
 ```python
 # 등록 — 객체를 만들어 session에 넣고 commit하면 INSERT가 실행된다
@@ -148,6 +148,23 @@ if todo is None:
 todo.completed = True            # 속성을 바꾸고 commit하면 UPDATE
 session.delete(todo)             # delete 뒤 commit하면 DELETE
 session.commit()
+```
+
+**구현 힌트 — 화면 (`index.html`)**
+
+`listTodos`(GET)와 다른 점은 세 가지입니다 — `method`, 본문이 JSON이라는 `headers`, 그리고 `body`.
+
+```js
+// 등록 — POST /todos, 본문 {"title": title}
+const res = await fetch(`${API_BASE}/todos`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },   // 본문이 JSON이라고 알린다
+  body: JSON.stringify({ title }),                   // 객체 → JSON 문자열
+});
+return check(res, "POST /todos");                    // 실패면 오류, 성공이면 응답 JSON
+
+// 수정 — PATCH /todos/${id}, 바꿀 값만 보낸다: { title } 또는 { completed }
+// 삭제 — DELETE /todos/${id}, 본문 없음 → fetch(url, { method: "DELETE" })
 ```
 
 **확인할 것** — 버튼을 누를 때 Network 탭에서:
@@ -255,8 +272,9 @@ Browser → Cloudflare Pages(index.html) → HTTP Request → Render(FastAPI) �
 
 | 보이는 것 | 의심할 곳 |
 |---|---|
-| `501 아직 구현하지 않았습니다` | 그 함수를 아직 구현하지 않았다 |
-| `422 Unprocessable Entity` | 요청 본문의 JSON 모양이 API 계약과 다르다 |
+| `○○ — index.html에서 아직 구현하지 않았습니다` | 화면 쪽 함수(`createTodo` 등)를 아직 채우지 않았다 |
+| `501 아직 구현하지 않았습니다` | 서버 쪽 함수(`create_todo` 등)를 아직 구현하지 않았다 |
+| `422 Unprocessable Entity` | 요청 본문의 JSON 모양이 API 계약과 다르다 — `headers`의 `Content-Type`, `JSON.stringify`를 빠뜨리지 않았는가 |
 | `404 Not Found` | 경로(URL) 오타, 또는 없는 id |
 | `500 Internal Server Error` | 서버 코드의 예외 — `uvicorn` 터미널(또는 Render Logs)의 오류를 읽는다 |
 | `Failed to fetch` · CORS 오류 | API 서버가 켜져 있는가, `API_BASE` 주소, `ALLOWED_ORIGINS`에 지금 화면 주소가 있는가, `file://`로 열지 않았는가 |
@@ -267,7 +285,7 @@ Browser → Cloudflare Pages(index.html) → HTTP Request → Render(FastAPI) �
 
 ## 완료 체크리스트
 
-- [ ] 기능 네 개를 Issue · Branch · PR로 하나씩 완성했다
+- [ ] 기능 네 개(서버 함수 + 화면의 `fetch` 함수)를 Issue · Branch · PR로 하나씩 완성했다
 - [ ] Network 탭에서 Method · URL · Status Code · 본문을 확인했다
 - [ ] `DATABASE_URL`만으로 SQLite에서 PostgreSQL로 옮기고, 비밀 값은 환경변수에만 넣었다
 - [ ] Render · Cloudflare Pages에 배포해 실제 URL로 TODO를 등록했다
