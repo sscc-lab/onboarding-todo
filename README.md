@@ -5,8 +5,8 @@ SSCCOps Maintainer Onboarding **2회차 · Web Fundamentals** 실습용 Reposito
 브라우저에서 버튼을 누르면 데이터가 어디를 거쳐 저장되는지, 작은 TODO 서비스를 직접 완성하고 인터넷에 배포하면서 확인합니다.
 
 ```text
-Browser ─HTTP─▶ FastAPI ─SQL─▶ Database
-(index.html)    (main.py)      (SQLite → PostgreSQL)
+Browser ─HTTP─▶ FastAPI ─▶ SQLAlchemy(ORM) ─SQL─▶ Database
+(index.html)    (main.py)                         (SQLite → PostgreSQL)
 ```
 
 ## 파일 구성
@@ -15,11 +15,33 @@ Browser ─HTTP─▶ FastAPI ─SQL─▶ Database
 |---|---|
 | `index.html` | 화면. 버튼을 누르면 `fetch`로 API를 부른다 — **완성되어 있다** |
 | `main.py` | 서버. 화면을 내려주고 `/todos` API를 처리한다 — **조회만 완성, 나머지는 실습에서 구현** |
-| `requirements.txt` | 서버가 쓰는 Python 패키지 목록 |
+| `requirements.txt` | 서버가 쓰는 Python 패키지 목록 (FastAPI · SQLAlchemy · PostgreSQL 드라이버) |
 | `todo.db` | 처음 실행하면 생기는 SQLite 파일. Git에 올리지 않는다(`.gitignore`) |
 
-> 일부러 `main.py` 한 파일에 HTTP 처리 · 검증 · SQL을 모두 넣었습니다.
+> 일부러 `main.py` 한 파일에 설정 · DB 모델 · HTTP 처리 · 검증을 모두 넣었습니다.
 > 기능을 넣을수록 파일이 어떻게 복잡해지는지 느껴 보세요. 그 불편함이 3회차의 출발점입니다.
+
+## SQLAlchemy(ORM)를 쓰는 이유
+
+데이터베이스는 SQL로 다룹니다. 그런데 SQLite와 PostgreSQL은 SQL 문법이 조금씩 달라서(값 자리 `?` / `%s`, 자동 증가 번호, 참 · 거짓 타입 등),
+SQL을 직접 쓰면 DB를 바꿀 때 코드를 여기저기 고쳐야 합니다.
+
+**ORM(Object-Relational Mapping)** 은 테이블을 Python 클래스로, 행을 객체로 다루게 해 주고, 실제 SQL은 DB 종류에 맞게 대신 만들어 줍니다.
+그래서 이 Repository는 **`DATABASE_URL` 하나만 바꾸면** SQLite에서 PostgreSQL로 옮겨 갑니다.
+
+```python
+class Todo(Base):                       # 테이블 todo = 클래스 Todo
+    __tablename__ = "todo"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    ...
+
+session.add(Todo(title="공부하기", ...))   # → INSERT INTO todo (...) VALUES (...)
+session.get(Todo, 3)                    # → SELECT ... FROM todo WHERE todo.id = 3
+```
+
+> `create_engine(..., echo=True)`로 켜 두었기 때문에, 서버 터미널에 **SQLAlchemy가 실제로 실행한 SQL**이 그대로 찍힙니다.
+> 버튼을 누를 때마다 어떤 SQL이 나가는지 같이 보세요.
 
 ## API 계약
 
@@ -89,17 +111,21 @@ git push -u origin feat/#1-create
 **구현 힌트**
 
 ```python
-# 등록 — 값은 문자열에 끼워 넣지 말고 ? 자리에 따로 넘긴다 (SQL Injection 방지)
-cur = conn.execute(
-    "INSERT INTO todo (title, completed, created_at) VALUES (?, 0, ?)",
-    (title, now()),
-)
-new_id = cur.lastrowid
+# 등록 — 객체를 만들어 session에 넣고 commit하면 INSERT가 실행된다
+with Session(engine) as session:
+    todo = Todo(title=title, completed=False, created_at=now())
+    session.add(todo)
+    session.commit()
+    session.refresh(todo)        # DB가 정한 id를 받아 온다
+    return to_dict(todo)
 
-# 없는 id → 404
-row = conn.execute("SELECT * FROM todo WHERE id = ?", (todo_id,)).fetchone()
-if row is None:
+# 수정 · 삭제 — 없는 id면 404
+todo = session.get(Todo, todo_id)
+if todo is None:
     raise HTTPException(status_code=404, detail="없는 TODO입니다")
+todo.completed = True            # 속성을 바꾸고 commit하면 UPDATE
+session.delete(todo)             # delete 뒤 commit하면 DELETE
+session.commit()
 ```
 
 **확인할 것** — 버튼을 누를 때 Network 탭에서:
@@ -108,6 +134,7 @@ if row is None:
 - 요청 본문(**Payload**)은 어떤 JSON인가
 - 응답 **Status Code**와 본문은 무엇인가
 - 서버를 껐다 켜도 TODO가 남아 있는가 — 왜 그런가(`todo.db`)
+- 서버 터미널에는 어떤 SQL이 찍혔는가 (`INSERT` · `UPDATE` · `DELETE`)
 
 ## 2. 심화 실습 — 인터넷에 배포하기
 
@@ -134,65 +161,25 @@ Browser ─▶ Cloudflare Pages (index.html)
 > 이 값은 비밀번호가 들어 있으므로 **절대 커밋하지 않습니다.** 서비스의 환경변수에만 넣습니다.
 > Render처럼 IPv4로 접속하는 곳에서는 Direct connection이 안 될 수 있습니다. 그때는 같은 화면의 **Session pooler** 연결 문자열을 씁니다.
 
-### 2-2. SQLite → PostgreSQL로 바꾸기 (`main.py`)
+### 2-2. PostgreSQL로 바꾸기 — 코드는 그대로, `DATABASE_URL`만
 
-데이터베이스가 바뀌면 연결 방법과 SQL 문법이 조금 달라집니다.
-
-`requirements.txt`에 한 줄을 더합니다.
-
-```text
-psycopg[binary]
-```
-
-`main.py`에서 바꿀 곳:
-
-```python
-import os
-import psycopg
-from psycopg.rows import dict_row
-
-DATABASE_URL = os.environ["DATABASE_URL"]   # 코드가 아니라 환경변수에서 읽는다
-
-
-def get_conn():
-    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
-
-
-def init_db():
-    with get_conn() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS todo (
-                id         SERIAL  PRIMARY KEY,          -- SQLite의 AUTOINCREMENT 대신
-                title      TEXT    NOT NULL,
-                completed  BOOLEAN NOT NULL DEFAULT FALSE,
-                created_at TEXT    NOT NULL
-            )
-            """
-        )
-```
-
-| | SQLite | PostgreSQL (psycopg) |
-|---|---|---|
-| 값 자리 | `?` | `%s` |
-| 새 id 받기 | `cur.lastrowid` | `INSERT … RETURNING *` 로 행을 바로 돌려받기 |
-| 참 · 거짓 | `0` / `1` | `TRUE` / `FALSE` (Python `bool` 그대로) |
-| 위치 | 내 컴퓨터의 파일 | 인터넷 너머의 서버 |
-
-```python
-row = conn.execute(
-    "INSERT INTO todo (title, completed, created_at) VALUES (%s, FALSE, %s) RETURNING *",
-    (title, now()),
-).fetchone()
-```
-
-로컬에서 먼저 확인합니다.
+`main.py`는 `DATABASE_URL` 환경변수가 있으면 그 DB를, 없으면 `todo.db`(SQLite)를 씁니다. 코드는 고치지 않습니다.
 
 ```bash
-pip install -r requirements.txt
-export DATABASE_URL="postgresql://…"      # Windows(Git Bash)도 같다
+export DATABASE_URL="postgresql://postgres:…@…"     # 2-1에서 복사한 주소 (Windows Git Bash도 같다)
 uvicorn main:app --reload
 ```
+
+서버가 뜨면 SQLAlchemy가 Supabase에 `todo` 테이블을 만들고, 터미널에 찍히는 SQL이 PostgreSQL용으로 바뀝니다.
+Supabase 대시보드의 **Table Editor**에서 브라우저로 등록한 TODO가 보이면 성공입니다.
+
+| | SQLite | PostgreSQL | 누가 맞춰 주나 |
+|---|---|---|---|
+| 위치 | 내 컴퓨터의 파일 | 인터넷 너머의 서버 | `DATABASE_URL` |
+| 값 자리 | `?` | `%s` | SQLAlchemy |
+| 자동 증가 번호 | `AUTOINCREMENT` | `SERIAL` · `IDENTITY` | SQLAlchemy |
+| 참 · 거짓 | `0` / `1` | `TRUE` / `FALSE` | SQLAlchemy |
+| 드라이버 | Python에 들어 있음 | `psycopg` (requirements.txt) | `main.py`가 주소를 `postgresql+psycopg://`로 맞춘다 |
 
 > `export`한 값은 그 터미널에만 있습니다. 파일에 적어 커밋하지 않습니다.
 
@@ -261,12 +248,13 @@ Browser → Cloudflare Pages(index.html) → HTTP Request → Render(FastAPI) �
 | `Failed to fetch` · CORS 오류 | `API_BASE` 주소, 또는 `ALLOWED_ORIGINS` 설정 |
 | Render 배포 실패 | Render의 Logs에서 Build 단계인지 Start 단계인지부터 본다 |
 | DB 연결 실패 | `DATABASE_URL` 비밀번호 · 주소, 또는 Session pooler 주소 사용 여부 |
+| `ModuleNotFoundError: psycopg` | `pip install -r requirements.txt`를 다시 실행 |
 
 ## 완료 체크리스트
 
 - [ ] 기능 네 개를 Issue · Branch · PR로 하나씩 완성했다
 - [ ] Network 탭에서 Method · URL · Status Code · 본문을 확인했다
-- [ ] SQLite를 PostgreSQL로 바꾸고, 비밀 값은 환경변수에만 넣었다
+- [ ] `DATABASE_URL`만으로 SQLite에서 PostgreSQL로 옮기고, 비밀 값은 환경변수에만 넣었다
 - [ ] Render · Cloudflare Pages에 배포해 실제 URL로 TODO를 등록했다
 - [ ] CORS 오류를 만나고 직접 풀었다
 - [ ] 버튼 하나가 지나가는 길을 자기 말로 설명할 수 있다
