@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>onboarding-todo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 560px; margin: 40px auto; padding: 0 16px; color: #191f28; }
+    h1 { font-size: 22px; }
+    form { display: flex; gap: 8px; margin-bottom: 16px; }
+    input[type=text] { flex: 1; padding: 8px 10px; border: 1px solid #d1d6db; border-radius: 8px; }
+    button { padding: 8px 12px; border: 0; border-radius: 8px; background: #1a68dc; color: #fff; cursor: pointer; }
+    button.ghost { background: #f2f4f6; color: #4e5968; }
+    ul { list-style: none; padding: 0; }
+    li { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid #e5e8eb; }
+    li span { flex: 1; }
+    li.done span { text-decoration: line-through; color: #66717e; }
+    #error { color: #f04452; min-height: 1.2em; }
+  </style>
+</head>
+<body>
+  <h1>TODO</h1>
+
+  <form id="new-form">
+    <input id="new-title" type="text" placeholder="할 일을 입력하세요" autocomplete="off" />
+    <button type="submit">등록</button>
+  </form>
+  <p id="error"></p>
+  <ul id="list"></ul>
+
+  <script>
+    // 로컬에서는 같은 서버(FastAPI)가 화면과 API를 함께 주므로 비워 둡니다.
+    // 심화 실습에서 화면을 Cloudflare Pages로 옮기면 Render 주소를 적습니다.
+    //   예: const API_BASE = "https://onboarding-todo-xxxx.onrender.com";
+    const API_BASE = "";
+
+    const list = document.getElementById("list");
+    const errorBox = document.getElementById("error");
+
+    async function api(method, path, body) {
+      const res = await fetch(API_BASE + path, {
+        method,
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${method} ${path} → ${res.status} ${text}`);
+      }
+      return res.status === 204 ? null : res.json();
+    }
+
+    function render(todos) {
+      list.innerHTML = "";
+      for (const todo of todos) {
+        const li = document.createElement("li");
+        if (todo.completed) li.classList.add("done");
+
+        const check = document.createElement("input");
+        check.type = "checkbox";
+        check.checked = todo.completed;
+        check.onchange = () => run(() => api("PATCH", `/todos/${todo.id}`, { completed: check.checked }));
+
+        const title = document.createElement("span");
+        title.textContent = todo.title;
+
+        const edit = document.createElement("button");
+        edit.className = "ghost";
+        edit.textContent = "수정";
+        edit.onclick = () => {
+          const next = prompt("새 제목", todo.title);
+          if (next !== null) run(() => api("PATCH", `/todos/${todo.id}`, { title: next }));
+        };
+
+        const del = document.createElement("button");
+        del.className = "ghost";
+        del.textContent = "삭제";
+        del.onclick = () => run(() => api("DELETE", `/todos/${todo.id}`));
+
+        li.append(check, title, edit, del);
+        list.append(li);
+      }
+    }
+
+    async function load() {
+      render(await api("GET", "/todos"));
+    }
+
+    // 요청을 보내고, 성공하면 목록을 다시 불러오고, 실패하면 오류를 보여 준다
+    async function run(action) {
+      errorBox.textContent = "";
+      try {
+        await action();
+        await load();
+      } catch (e) {
+        errorBox.textContent = e.message;
+      }
+    }
+
+    document.getElementById("new-form").onsubmit = (e) => {
+      e.preventDefault();
+      const input = document.getElementById("new-title");
+      run(async () => {
+        await api("POST", "/todos", { title: input.value });
+        input.value = "";
+      });
+    };
+
+    run(() => Promise.resolve());
+  </script>
+</body>
+</html>

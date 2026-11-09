@@ -1,0 +1,11 @@
+# 로컬 데이터베이스 파일 — 각자 컴퓨터에서 만들어지므로 올리지 않는다
+todo.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 비밀 값
+.env
