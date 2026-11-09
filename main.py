@@ -87,34 +87,44 @@ def list_todos():
 
 @app.post("/todos", status_code=201)
 def create_todo(body: TodoCreate):
-    """TODO 등록 — 실습 ①에서 구현합니다.
-
-    1. body.title이 비어 있으면 400을 돌려준다 (HTTPException)
-    2. INSERT INTO todo (title, completed, created_at) VALUES (?, 0, ?)
-    3. 방금 만든 행을 다시 SELECT해서 dict로 돌려준다 (cursor.lastrowid)
-    """
-    raise HTTPException(status_code=501, detail="아직 구현하지 않았습니다")
+    """TODO 등록."""
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="제목을 입력하세요")
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO todo (title, completed, created_at) VALUES (?, 0, ?)",
+            (title, now()),
+        )
+        row = conn.execute("SELECT * FROM todo WHERE id = ?", (cur.lastrowid,)).fetchone()
+    return to_dict(row)
 
 
 @app.patch("/todos/{todo_id}")
 def update_todo(todo_id: int, body: TodoUpdate):
-    """TODO 수정 · 완료 변경 — 실습 ②③에서 구현합니다.
-
-    1. 해당 id가 없으면 404
-    2. body.title이 있으면 title을, body.completed가 있으면 completed를 UPDATE
-    3. 바뀐 행을 dict로 돌려준다
-    """
-    raise HTTPException(status_code=501, detail="아직 구현하지 않았습니다")
+    """TODO 수정 · 완료 변경."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM todo WHERE id = ?", (todo_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="없는 TODO입니다")
+        if body.title is not None:
+            title = body.title.strip()
+            if not title:
+                raise HTTPException(status_code=400, detail="제목을 입력하세요")
+            conn.execute("UPDATE todo SET title = ? WHERE id = ?", (title, todo_id))
+        if body.completed is not None:
+            conn.execute("UPDATE todo SET completed = ? WHERE id = ?", (int(body.completed), todo_id))
+        row = conn.execute("SELECT * FROM todo WHERE id = ?", (todo_id,)).fetchone()
+    return to_dict(row)
 
 
 @app.delete("/todos/{todo_id}", status_code=204)
 def delete_todo(todo_id: int):
-    """TODO 삭제 — 실습 ④에서 구현합니다.
-
-    1. 해당 id가 없으면 404
-    2. DELETE FROM todo WHERE id = ?
-    """
-    raise HTTPException(status_code=501, detail="아직 구현하지 않았습니다")
+    """TODO 삭제."""
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM todo WHERE id = ?", (todo_id,))
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="없는 TODO입니다")
 
 
 def now() -> str:
