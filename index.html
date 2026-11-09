@@ -29,10 +29,10 @@
   <ul id="list"></ul>
 
   <script>
-    // 로컬에서는 같은 서버(FastAPI)가 화면과 API를 함께 주므로 비워 둡니다.
-    // 심화 실습에서 화면을 Cloudflare Pages로 옮기면 Render 주소를 적습니다.
+    // API 서버(FastAPI)의 주소입니다. 화면과 API는 서로 다른 서버에서 돕니다.
+    // 심화 실습에서 API를 Render에 배포하면 그 주소로 바꿉니다.
     //   예: const API_BASE = "https://onboarding-todo-xxxx.onrender.com";
-    const API_BASE = "";
+    const API_BASE = "http://localhost:8000";
 
     const list = document.getElementById("list");
     const errorBox = document.getElementById("error");

@@ -7,14 +7,17 @@ SSCCOps Maintainer Onboarding **2회차 · Web Fundamentals** 실습용 Reposito
 ```text
 Browser ─HTTP─▶ FastAPI ─▶ SQLAlchemy(ORM) ─SQL─▶ Database
 (index.html)    (main.py)                         (SQLite → PostgreSQL)
+localhost:5500  localhost:8000
 ```
+
+화면(`index.html`)과 API(`main.py`)는 **처음부터 서로 다른 서버**에서 돕니다. 배포할 때 화면은 Cloudflare Pages, API는 Render로 가는데, 로컬에서도 같은 모양으로 연습합니다.
 
 ## 파일 구성
 
 | 파일 | 하는 일 |
 |---|---|
-| `index.html` | 화면. 버튼을 누르면 `fetch`로 API를 부른다 — **완성되어 있다** |
-| `main.py` | 서버. 화면을 내려주고 `/todos` API를 처리한다 — **조회만 완성, 나머지는 실습에서 구현** |
+| `index.html` | 화면. 버튼을 누르면 `fetch`로 `API_BASE`(기본 `http://localhost:8000`)의 API를 부른다 — **완성되어 있다** |
+| `main.py` | API 서버. `/todos` API를 처리한다 — **조회만 완성, 나머지는 실습에서 구현** |
 | `requirements.txt` | 서버가 쓰는 Python 패키지 목록 (FastAPI · SQLAlchemy · PostgreSQL 드라이버) |
 | `todo.db` | 처음 실행하면 생기는 SQLite 파일. Git에 올리지 않는다(`.gitignore`) |
 
@@ -72,15 +75,34 @@ cd onboarding-todo
 
 python -m venv .venv
 source .venv/bin/activate        # Windows(Git Bash): source .venv/Scripts/activate
-
 pip install -r requirements.txt
-uvicorn main:app --reload
 ```
 
-4. 브라우저에서 http://127.0.0.1:8000 을 엽니다. 목록은 비어 있고, **등록 버튼을 누르면 `501` 오류**가 보이면 정상입니다 — 아직 구현하지 않았으니까요.
-5. http://127.0.0.1:8000/docs 를 열면 FastAPI가 만들어 준 API 문서에서 요청을 직접 보내 볼 수 있습니다.
+4. **터미널 두 개**를 엽니다. 하나는 API, 하나는 화면입니다.
+
+   ```bash
+   # 터미널 ① — API 서버
+   uvicorn main:app --reload               # → http://localhost:8000
+
+   # 터미널 ② — 화면 (같은 폴더에서)
+   python -m http.server 5500              # → http://localhost:5500
+   ```
+
+   > VS Code의 **Live Server** 확장을 써도 됩니다. 기본 주소가 같은 `http://localhost:5500`입니다.
+
+5. 브라우저에서 **http://localhost:5500** 을 엽니다. 목록은 비어 있고, **등록 버튼을 누르면 `501` 오류**가 보이면 정상입니다 — 아직 구현하지 않았으니까요.
+6. **http://localhost:8000/docs** 를 열면 FastAPI가 만들어 준 API 문서에서 요청을 직접 보내 볼 수 있습니다.
 
 > 브라우저 **개발자 도구(F12) → Network 탭**을 켜 두세요. 버튼을 누를 때마다 어떤 Request가 나가고 어떤 Response가 오는지 보입니다.
+
+> `index.html`을 파일 탐색기에서 더블클릭해 열면(`file://`) 화면의 주소가 없어서 CORS로 막힙니다. 꼭 5500번 서버로 엽니다.
+
+### 왜 CORS 설정이 처음부터 들어 있나
+
+화면(`localhost:5500`)과 API(`localhost:8000`)는 **포트가 달라서 서로 다른 출처(origin)** 입니다.
+브라우저는 다른 출처의 API를 부를 때, **API 서버가 «이 화면 주소는 허락한다»고 응답에 적어 줘야만** 결과를 화면에 넘깁니다. 이것이 CORS입니다.
+그래서 `main.py`에는 로컬 화면 주소(`http://localhost:5500`, `http://127.0.0.1:5500`)를 허락하는 설정이 미리 들어 있습니다.
+배포하면 화면 주소가 Cloudflare Pages로 바뀌므로, 그 주소를 환경변수 `ALLOWED_ORIGINS`로 넘깁니다(2-5).
 
 ## 1. 기초 실습 — 기능 네 개 완성하기
 
@@ -207,26 +229,18 @@ Supabase 대시보드의 **Table Editor**에서 브라우저로 등록한 TODO�
 2. Cloudflare에서 **Pages → Connect to Git** → 내 Repository → Framework preset **None**, Build command는 비우고, Build output directory는 `/`.
 3. 배포가 끝나면 `https://<프로젝트 이름>.pages.dev` 를 엽니다.
 
-### 2-5. CORS 오류 풀기
+### 2-5. CORS — 배포한 화면 주소를 허락하기
 
 Pages 화면에서 등록을 누르면 아마 실패하고, 개발자 도구 Console에 **CORS** 오류가 보일 겁니다.
-화면(`pages.dev`)과 API(`onrender.com`)의 주소가 달라서, 브라우저가 «API 서버가 허락한 주소인가»를 확인하기 때문입니다.
-서버가 허락할 주소를 알려 줍니다.
+API가 허락한 주소는 아직 로컬 화면(`localhost:5500`)뿐이고, 새 화면 주소(`pages.dev`)는 모르기 때문입니다.
 
-```python
-from fastapi.middleware.cors import CORSMiddleware
+Render의 **Environment**에 화면 주소를 넣고 다시 배포합니다. 쉼표로 여러 개를 적을 수 있습니다.
 
-ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "").split(",")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+```text
+ALLOWED_ORIGINS=https://<프로젝트 이름>.pages.dev,http://localhost:5500
 ```
 
-Render의 Environment에 `ALLOWED_ORIGINS=https://<프로젝트 이름>.pages.dev` 를 넣고 다시 배포합니다.
+> `allow_origins=["*"]`로 아무 주소나 허락하면 오류는 사라지지만, 다른 사이트도 이 API를 마음대로 부를 수 있게 됩니다. 쓰지 않습니다.
 
 ### 2-6. 확인할 흐름
 
@@ -245,7 +259,8 @@ Browser → Cloudflare Pages(index.html) → HTTP Request → Render(FastAPI) �
 | `422 Unprocessable Entity` | 요청 본문의 JSON 모양이 API 계약과 다르다 |
 | `404 Not Found` | 경로(URL) 오타, 또는 없는 id |
 | `500 Internal Server Error` | 서버 코드의 예외 — `uvicorn` 터미널(또는 Render Logs)의 오류를 읽는다 |
-| `Failed to fetch` · CORS 오류 | `API_BASE` 주소, 또는 `ALLOWED_ORIGINS` 설정 |
+| `Failed to fetch` · CORS 오류 | API 서버가 켜져 있는가, `API_BASE` 주소, `ALLOWED_ORIGINS`에 지금 화면 주소가 있는가, `file://`로 열지 않았는가 |
+| `[Errno 13]` · `10013` 포트 바인딩 실패 (Windows) | 그 포트를 Windows가 예약해 두었다 — `uvicorn main:app --reload --port 9000`처럼 바꾸고 `API_BASE`도 같이 바꾼다 |
 | Render 배포 실패 | Render의 Logs에서 Build 단계인지 Start 단계인지부터 본다 |
 | DB 연결 실패 | `DATABASE_URL` 비밀번호 · 주소, 또는 Session pooler 주소 사용 여부 |
 | `ModuleNotFoundError: psycopg` | `pip install -r requirements.txt`를 다시 실행 |
@@ -256,7 +271,7 @@ Browser → Cloudflare Pages(index.html) → HTTP Request → Render(FastAPI) �
 - [ ] Network 탭에서 Method · URL · Status Code · 본문을 확인했다
 - [ ] `DATABASE_URL`만으로 SQLite에서 PostgreSQL로 옮기고, 비밀 값은 환경변수에만 넣었다
 - [ ] Render · Cloudflare Pages에 배포해 실제 URL로 TODO를 등록했다
-- [ ] CORS 오류를 만나고 직접 풀었다
+- [ ] 화면과 API의 주소가 다를 때 CORS가 왜 필요한지 설명하고, 배포 주소를 허락했다
 - [ ] 버튼 하나가 지나가는 길을 자기 말로 설명할 수 있다
 
 ## 규칙
